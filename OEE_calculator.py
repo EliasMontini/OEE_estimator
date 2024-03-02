@@ -5,6 +5,7 @@ import pandas as pd
 import joblib
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Function to calculate OEE based on the chosen method
 def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, rolling_period=None, model_path=None):
@@ -14,7 +15,7 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
         # Method 1: Threshold-based classification for multiple variables with different assessment criteria
         for i, variable in enumerate(variables):
             threshold = thresholds[i]
-            assessment = threshold_condition_on[i]
+            assessment = threshold_conditions_on[i]
             if assessment == "above":
                 data_copy[f'classified_{variable}'] = data[variable] > threshold
             elif assessment == "less":
@@ -42,17 +43,22 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
         # Assuming "on" if any of the variables' rolling averages meets its threshold assessment criteria
         data_copy['classified'] = data_copy[[f'classified_{var}' for var in variables]].any(axis=1).map(
             {True: 'on', False: 'off'})
+        print(data_copy)
+        temp_variable = 'temp'
+        # Segment the data by 'classified' changes
 
-        # Plot the variable with color coding based on classification
-        plt.figure(figsize=(10, 6))
-        for status, group in data_copy.groupby(f'classified_{variable}'):
-            color = 'red' if status else 'blue'
-            plt.plot(group[variable], color=color, label=f'{variable} classified as {"on" if status else "off"}')
+        unique_classified = data_copy['classified'].unique()
+        colors = plt.cm.jet(np.linspace(0, 1, len(unique_classified)))  # Generate colors
+        classified_dict = dict(zip(unique_classified, colors))
 
-        plt.title(f'Plot of {variable} with Classification')
-        plt.xlabel('Index')
-        plt.ylabel(variable)
-        plt.legend()
+        fig, ax = plt.subplots()
+        for classified, group_df in data_copy.groupby('classified'):
+            group_df.plot(x='timestamp', y=temp_variable, ax=ax, label=classified, color=classified_dict[classified])
+
+        plt.legend(title='Classified')
+        plt.title('Temperature Over Time by Classification')
+        plt.xlabel('Timestamp')
+        plt.ylabel(temp_variable.capitalize())
         plt.show()
 
 
@@ -81,20 +87,20 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
     productive_time = data_copy[data_copy['classified'] == 'on']['timestamp'].count() * (total_time / len(data_copy))
     print("Productive time ", productive_time)
 
-    oee = (productive_time / total_time)
+    oee = (productive_time / total_time) *100
     return oee
 
 def calculate_oee_method_3(data, variables, file_path):
         # Delete rows with missing values for specified variables
         data_copy = data.copy()
         data_copy = data_copy.dropna(subset=variables)
-        if data_copy['stato'].isnull().any():
-            print("Warning: Missing values found in 'stato' column.")
-            data_copy = data_copy.dropna(subset="stato")
+        if data_copy['state'].isnull().any():
+            print("Warning: Missing values found in 'state' column.")
+            data_copy = data_copy.dropna(subset="state")
 
         # Split the data into features (X) and target (y)
         X = data_copy[variables]
-        y = data_copy['stato']
+        y = data_copy['state']
 
         # Split into training and test sets
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
@@ -181,7 +187,7 @@ def filter_out_periods(data, date_ranges):
 
 def main():
     # Relative path or parameter for dataset
-    file_path = 'datasets/test_msc/OEEtest.csv'
+    file_path = './data/OEEtest_Modified_ms_with_state.csv'
 
     data = pd.read_csv(file_path)
 
@@ -195,11 +201,17 @@ def main():
         ["2023-08-21 12:13:20", "2023-08-21 12:13:21"],
         ["01/03/2022 00:00:00", "01/04/2022 23:59:59"],
     ]
-    rolling_period = 100
+    rolling_period = 5
     OEE_estimation_method = 2
-    model_path = '.data_analysis_INT/datasets/oee_model.pkl'
+    model_path = './data/oee_model.pkl'
 
-    threshold_conditions_on = ["above", "above"]
+    threshold_conditions_on = ["above"] #["above", "above"]
+
+    # Check if all lists have the same length
+    if len(variables) == len(thresholds_device_based) == len(threshold_conditions_on):
+        print("All lists have the same length.")
+    else:
+        raise ValueError("Lists do not have the same length.")
 
     # Example function calls with placeholders
     thresholds = thresholds_device_based  # Simplified for demonstration
