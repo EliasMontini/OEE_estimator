@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Function to calculate OEE based on the chosen method
-def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, rolling_period=None, model_path=None):
+def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, rolling_period=None, model_path=None, device_daily_hours=None):
     data_copy = data.copy()
 
     if method == 1:
@@ -24,7 +24,7 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
                 data_copy[f'classified_{variable}'] = data[variable] == threshold
 
         # Assuming "on" if any of the variables meets its threshold assessment criteria
-        data_copy['classified'] = data_copy[[f'classified_{var}' for var in variables]].any(axis=1).map(
+        data_copy['classified'] = data_copy[[f'classified_{var}' for var in variables]].all(axis=1).map(
             {True: 'on', False: 'off'})
 
     elif method == 2:
@@ -41,26 +41,8 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
                 data_copy[f'classified_{variable}'] = data_copy[f'{variable}_rolling_avg'] == rolling_threshold
 
         # Assuming "on" if any of the variables' rolling averages meets its threshold assessment criteria
-        data_copy['classified'] = data_copy[[f'classified_{var}' for var in variables]].any(axis=1).map(
+        data_copy['classified'] = data_copy[[f'classified_{var}' for var in variables]].all(axis=1).map(
             {True: 'on', False: 'off'})
-        print(data_copy)
-        temp_variable = 'temp'
-        # Segment the data by 'classified' changes
-
-        unique_classified = data_copy['classified'].unique()
-        colors = plt.cm.jet(np.linspace(0, 1, len(unique_classified)))  # Generate colors
-        classified_dict = dict(zip(unique_classified, colors))
-
-        fig, ax = plt.subplots()
-        for classified, group_df in data_copy.groupby('classified'):
-            group_df.plot(x='timestamp', y=temp_variable, ax=ax, label=classified, color=classified_dict[classified])
-
-        plt.legend(title='Classified')
-        plt.title('Temperature Over Time by Classification')
-        plt.xlabel('Timestamp')
-        plt.ylabel(temp_variable.capitalize())
-        plt.show()
-
 
     elif method == 3:
         # Delete rows with missing values for specified variables
@@ -78,16 +60,40 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
     else:
         raise ValueError("Invalid OEE estimation method.")
 
+    # plot
+    temp_variable = variables[0]
+    # Segment the data by 'classified' changes
+    unique_classified = data_copy['classified'].unique()
+    colors = plt.cm.jet(np.linspace(0, 1, len(unique_classified)))  # Generate colors
+    classified_dict = dict(zip(unique_classified, colors))
+
+    fig, ax = plt.subplots()
+    for classified, group_df in data_copy.groupby('classified'):
+        # Using scatter plot here
+        ax.scatter(group_df['timestamp'], group_df[temp_variable], label=classified,
+                   color=classified_dict[classified])
+
+    plt.legend(title='Classified')
+    plt.title('Temperature Over Time by Classification')
+    plt.xlabel('Timestamp')
+    plt.ylabel(temp_variable.capitalize())
+    plt.show()
+
     # Calculate OEE
     print("min ", data_copy['timestamp'].min())
     print("max ", data_copy['timestamp'].max())
     print(data_copy)
-    total_time = (data_copy['timestamp'].max() - data_copy['timestamp'].min()).total_seconds() / 3600
-    print("Total time ", total_time)
+    if device_daily_hours == None:
+        total_time = (data_copy['timestamp'].max() - data_copy['timestamp'].min()).total_seconds()
+    else:
+        total_time = device_daily_hours * (data_copy['timestamp'].max() - data_copy['timestamp'].min()).days
+    print("Total time ", total_time, " hours")
     productive_time = data_copy[data_copy['classified'] == 'on']['timestamp'].count() * (total_time / len(data_copy))
-    print("Productive time ", productive_time)
+    print("Productive time ", productive_time, " hours")
 
     oee = (productive_time / total_time) *100
+
+
     return oee
 
 def calculate_oee_method_3(data, variables, file_path):
@@ -193,19 +199,20 @@ def main():
 
     # Preprocess the timestamp to a readable format if necessary
     data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
-
+    device_daily_hours = 8
     # Example of placeholders and configurations
     variables = ["temp"] # [ "coppia", "temp",]
     thresholds_device_based = [60] #[0.1, 40]
+    threshold_conditions_on = ["above"] #["above", "above"]
+
     date_ranges = [
         ["2023-08-21 12:13:20", "2023-08-21 12:13:21"],
         ["01/03/2022 00:00:00", "01/04/2022 23:59:59"],
     ]
     rolling_period = 5
-    OEE_estimation_method = 2
+    OEE_estimation_method = 3
     model_path = './data/oee_model.pkl'
 
-    threshold_conditions_on = ["above"] #["above", "above"]
 
     # Check if all lists have the same length
     if len(variables) == len(thresholds_device_based) == len(threshold_conditions_on):
@@ -221,7 +228,7 @@ def main():
 
     data = filter_out_periods(data, date_ranges)
     OEE = calculate_oee(data, OEE_estimation_method, variables, generic_thresholds, threshold_conditions_on, rolling_period,
-                        model_path)
+                        model_path, device_daily_hours)
 
     print("OEE ", OEE, "%")
 
