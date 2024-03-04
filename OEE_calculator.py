@@ -4,6 +4,7 @@ from sklearn.metrics import accuracy_score
 import pandas as pd
 import joblib
 import os
+import plotly.express as px
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -60,24 +61,32 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
     else:
         raise ValueError("Invalid OEE estimation method.")
 
-    # plot
-    temp_variable = variables[0]
-    # Segment the data by 'classified' changes
-    unique_classified = data_copy['classified'].unique()
-    colors = plt.cm.jet(np.linspace(0, 1, len(unique_classified)))  # Generate colors
-    classified_dict = dict(zip(unique_classified, colors))
+    # Assuming 'data_copy' is your DataFrame and it already contains 'timestamp' and 'classified' columns
+    temp_variable = variables[
+        0]  # Assuming 'variables' is a list of column names and you're interested in the first one
 
-    fig, ax = plt.subplots()
-    for classified, group_df in data_copy.groupby('classified'):
-        # Using scatter plot here
-        ax.scatter(group_df['timestamp'], group_df[temp_variable], label=classified,
-                   color=classified_dict[classified])
+    # Convert 'timestamp' to a string if it's not already, to ensure compatibility with Plotly
+    data_copy['timestamp'] = data_copy['timestamp'].astype(str)
+    # Use Plotly Express to create an interactive scatter plot
+    fig = px.scatter(data_copy, x='timestamp', y=temp_variable,
+                     color='classified',  # This assigns different colors to different 'classified' values
+                     labels={'classified': 'Classification'},
+                     title='Temperature Over Time by Classification')
 
-    plt.legend(title='Classified')
-    plt.title('Temperature Over Time by Classification')
-    plt.xlabel('Timestamp')
-    plt.ylabel(temp_variable.capitalize())
-    plt.show()
+    # Use Plotly Express to create an interactive scatter plot
+    fig = px.scatter(data_copy, x='timestamp', y=temp_variable,
+                     color='classified',  # This will automatically assign colors
+                     labels={'classified': 'Classification'},
+                     title='Temperature Over Time by Classification')
+
+    # Update layout to improve readability
+    fig.update_layout(xaxis_title='Timestamp',
+                      yaxis_title=temp_variable.capitalize(),
+                      legend_title='Classified',
+                      xaxis={'type': 'category'})  # This line can be adjusted or removed based on your timestamp format
+
+    # Show the plot
+    fig.show()
 
     # Calculate OEE
     print("min ", data_copy['timestamp'].min())
@@ -237,8 +246,8 @@ def main():
     # OFF --> no production orders, out-of-order, planned maintenance, unplanned maintenance, to-be excluded, no personnel.
     # ADD possibility to view OEE by day, week, month.
 
-    rolling_period = 5
-    OEE_estimation_method = 3
+    rolling_period = 2
+    OEE_estimation_method = 2
     model_path = './data/oee_model.pkl'
 
 
