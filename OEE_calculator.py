@@ -163,32 +163,52 @@ def thresholds_definition(threshold_method, product_key=None, thresholds_generic
     return thresholds
 
 
+import pandas as pd
+
 def filter_out_periods(data, date_ranges):
-    # Convert date_ranges to datetime
-    date_ranges_dt = [(pd.to_datetime(start, dayfirst=True), pd.to_datetime(end, dayfirst=True)) for start, end in
-                      date_ranges]
+    # Convert date_ranges to datetime and include the action (e.g., "exclude")
+    date_ranges_dt = [(pd.to_datetime(start, dayfirst=True), pd.to_datetime(end, dayfirst=True), action)
+                      for start, end, action in date_ranges]
+
+    # Determine the min and max timestamp in the data
+    min_timestamp, max_timestamp = data['timestamp'].min(), data['timestamp'].max()
 
     # Initialize a mask to track rows to keep
     mask = pd.Series([False] * len(data), index=data.index)
 
-    # Apply each date range as a filter, updating the mask
-    for start, end in date_ranges_dt:
-        mask |= ((data['timestamp'] >= start) & (data['timestamp'] <= end))
+    # Apply each date range as a filter, updating the mask only for "exclude" ranges
+    for start, end, action in date_ranges_dt:
+        # Check if the date range falls within the data's timestamp range
+        if start < min_timestamp or end > max_timestamp:
+            print(f"Date range {start} to {end} ({action}) falls outside the data's timestamp range.")
+        elif action == "exclude":
+            mask |= ((data['timestamp'] >= start) & (data['timestamp'] <= end))
 
-    # Find rows that fall outside all specified ranges
-    outside_ranges = data[~mask]
-
-    if not outside_ranges.empty:
-        print("There are rows outside the specified date ranges.")
-        # Optionally, print out some of these rows or their count
-        print(f"Count of rows outside specified ranges: {len(outside_ranges)}")
-    else:
-        print("All rows fall within the specified date ranges.")
-
-    # Filter out rows that fall within any of the specified ranges
+    # Filter out rows that fall within any of the specified "exclude" ranges
     data_filtered = data[~mask]
 
     return data_filtered
+
+
+def classify_periods(data, date_ranges):
+    # Convert date_ranges to datetime and include the category
+    date_ranges_dt = [(pd.to_datetime(start, dayfirst=True), pd.to_datetime(end, dayfirst=True), category)
+                      for start, end, category in date_ranges]
+
+    # Initialize a column in 'data' to hold the classification result
+    # Default classification can be 'normal operation' or any suitable default
+    data['classification'] = 'not classified'
+
+    # Determine the min and max timestamp in the data
+    min_timestamp, max_timestamp = data['timestamp'].min(), data['timestamp'].max()
+
+    # Check each date range to ensure it's within the data's timestamp range
+    for start, end, category in date_ranges_dt:
+        if start < min_timestamp or end > max_timestamp:
+            print(f"Date range {start} to {end} ({category}) falls outside the data's timestamp range.")
+        else:
+            # Update the 'classification' column for ranges within the data's timestamp range
+            data.loc[((data['timestamp'] >= start) & (data['timestamp'] <= end)), 'classification'] = category
 
 
 def main():
@@ -206,9 +226,17 @@ def main():
     threshold_conditions_on = ["above"] #["above", "above"]
 
     date_ranges = [
-        ["2023-08-21 12:13:20", "2023-08-21 12:13:21"],
-        ["01/03/2022 00:00:00", "01/04/2022 23:59:59"],
+        ["2024-03-06 15:58:20", "2024-03-06 17:58:20", "exclude"],
+        ["2024-03-06 14:58:20", "2024-03-06 15:58:20", "no production orders"],
+        ["01/03/2022 00:00:00", "01/04/2022 23:59:59", "device out-of-order"],
+        ["01/03/2022 00:00:00", "01/04/2022 23:59:59", "planned maintenance"],
+        ["01/03/2022 00:00:00", "01/04/2022 23:59:59", "unplanned maintenance"],
+        ["01/03/2022 00:00:00", "01/04/2022 23:59:59", "no personnel"],
+        ["01/03/2022 00:00:00", "01/04/2022 23:59:59", "setup"]
     ]
+    # OFF --> no production orders, out-of-order, planned maintenance, unplanned maintenance, to-be excluded, no personnel.
+    # ADD possibility to view OEE by day, week, month.
+
     rolling_period = 5
     OEE_estimation_method = 3
     model_path = './data/oee_model.pkl'
@@ -222,7 +250,7 @@ def main():
 
     # Example function calls with placeholders
     thresholds = thresholds_device_based  # Simplified for demonstration
-    calculate_oee_method_3(data, variables, file_path)
+    #calculate_oee_method_3(data, variables, file_path)
     generic_thresholds = thresholds  # Simplified for demonstration
     print(generic_thresholds)
 
@@ -230,7 +258,10 @@ def main():
     OEE = calculate_oee(data, OEE_estimation_method, variables, generic_thresholds, threshold_conditions_on, rolling_period,
                         model_path, device_daily_hours)
 
+    classify_periods(data, date_ranges)
     print("OEE ", OEE, "%")
+
+    print(data)
 
 
 if __name__ == "__main__":
