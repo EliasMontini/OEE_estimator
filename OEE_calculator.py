@@ -150,41 +150,6 @@ def calculate_oee_method_3(data, variables, file_path):
         joblib.dump(model, model_path)
         print(f"Model saved to {model_path}")
 
-def thresholds_definition(threshold_method, product_key=None, thresholds_generic = None, thresholds_specific=None):
-    """
-    Define thresholds based on the specified method.
-
-    Parameters:
-    - threshold_method: A string specifying the thresholding method ('static' or 'dynamic_with_average').
-    - product_key: A string specifying the product for specific thresholds.
-    - thresholds_static: A list specifying static thresholds for variables (applies if generic static thresholds are used).
-    - specific_thresholds: A dictionary mapping product keys to their specific static thresholds.
-
-    Returns:
-    - thresholds: The determined thresholds based on the method and parameters provided.
-    """
-
-    thresholds = None
-
-    if threshold_method == 'static':
-        # Check if specific thresholds for a product are requested
-        if product_key and thresholds_specific:
-            # Attempt to retrieve specific thresholds for the given product
-            thresholds = thresholds_specific.get(product_key)
-            if thresholds is None:
-                print(
-                    f"No specific thresholds found for product {product_key}. Falling back to generic static thresholds.")
-                thresholds = thresholds_generic
-        else:
-            # Use generic static thresholds
-            thresholds = thresholds_generic
-
-    elif threshold_method == 'dynamic_with_average':
-        # Placeholder for dynamic threshold calculation logic
-        print("Dynamic with anomaly detection...")
-
-    return thresholds
-
 
 import pandas as pd
 
@@ -277,7 +242,6 @@ def main():
     thresholds = thresholds_device_based  # Simplified for demonstration
     #calculate_oee_method_3(data, variables, file_path)
     generic_thresholds = thresholds  # Simplified for demonstration
-    print(generic_thresholds)
 
     data = filter_out_periods(data, date_ranges)
     OEE, data_copy = calculate_oee(data, OEE_estimation_method, variables, generic_thresholds, threshold_conditions_on, rolling_period,
