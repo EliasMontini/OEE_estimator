@@ -5,12 +5,14 @@ import pandas as pd
 import joblib
 import os
 import plotly.express as px
+from pandas import to_datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
 # Function to calculate OEE based on the chosen method
 def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, rolling_period=None, model_path=None, device_daily_hours=None):
     data_copy = data.copy()
+    data_copy['timestamp'] = to_datetime(data_copy['timestamp'])
 
     if method == 1:
         # Method 1: Threshold-based classification for multiple variables with different assessment criteria
@@ -65,45 +67,57 @@ def calculate_oee(data, method, variables, thresholds, threshold_conditions_on, 
     temp_variable = variables[
         0]  # Assuming 'variables' is a list of column names and you're interested in the first one
 
+
+    # Calculate OEE
+    print("min ", data_copy['timestamp'].min())
+    print("max ", data_copy['timestamp'].max())
+    print(data_copy)
+
+    # Calculate Total Time
+    if device_daily_hours is None:
+        total_time = (data_copy['timestamp'].max() - data_copy[
+            'timestamp'].min()).total_seconds() / 3600  # Convert to hours
+    else:
+        total_time = device_daily_hours * (data_copy['timestamp'].max() - data_copy['timestamp'].min()).days
+
+    print(f"Total time: {total_time} hours")
+
+    # Calculate Productive Time
+    productive_time_seconds = 0
+    previous_timestamp = None
+
+    for _, row in data_copy.iterrows():
+        if row['classified'] == 'on' and previous_timestamp is not None:
+            productive_time_seconds += (row['timestamp'] - previous_timestamp).total_seconds()
+        previous_timestamp = row['timestamp']
+
+    productive_time_hours = productive_time_seconds / 3600  # Convert to hours
+
+    print(f"Productive time: {productive_time_hours} hours")
+
+    # Calculate OEE
+    oee = (productive_time_hours / total_time) * 100
+
+    print(f"OEE: {oee}%")
+
     # Convert 'timestamp' to a string if it's not already, to ensure compatibility with Plotly
-    data_copy['timestamp'] = data_copy['timestamp'].astype(str)
+    data_copy_visualisation = data_copy.copy()
+    #data_copy['timestamp'] = data_copy['timestamp'].astype(str)
     # Use Plotly Express to create an interactive scatter plot
     fig = px.scatter(data_copy, x='timestamp', y=temp_variable,
                      color='classified',  # This assigns different colors to different 'classified' values
                      labels={'classified': 'Classification'},
                      title='Temperature Over Time by Classification')
 
-    # Use Plotly Express to create an interactive scatter plot
-    fig = px.scatter(data_copy, x='timestamp', y=temp_variable,
-                     color='classified',  # This will automatically assign colors
-                     labels={'classified': 'Classification'},
-                     title='Temperature Over Time by Classification')
-
     # Update layout to improve readability
     fig.update_layout(xaxis_title='Timestamp',
                       yaxis_title=temp_variable.capitalize(),
-                      legend_title='Classified',
-                      xaxis={'type': 'category'})  # This line can be adjusted or removed based on your timestamp format
+                      legend_title='Classified'
+                      )  # This line can be adjusted or removed based on your timestamp format
 
     # Show the plot
     fig.show()
-
-    # Calculate OEE
-    print("min ", data_copy['timestamp'].min())
-    print("max ", data_copy['timestamp'].max())
-    print(data_copy)
-    if device_daily_hours == None:
-        total_time = (data_copy['timestamp'].max() - data_copy['timestamp'].min()).total_seconds()
-    else:
-        total_time = device_daily_hours * (data_copy['timestamp'].max() - data_copy['timestamp'].min()).days
-    print("Total time ", total_time, " hours")
-    productive_time = data_copy[data_copy['classified'] == 'on']['timestamp'].count() * (total_time / len(data_copy))
-    print("Productive time ", productive_time, " hours")
-
-    oee = (productive_time / total_time) *100
-
-
-    return oee
+    return oee, data_copy
 
 def calculate_oee_method_3(data, variables, file_path):
         # Delete rows with missing values for specified variables
@@ -201,15 +215,16 @@ def filter_out_periods(data, date_ranges):
 
 def classify_periods(data, date_ranges):
     # Convert date_ranges to datetime and include the category
+    data_copy = data.copy()
     date_ranges_dt = [(pd.to_datetime(start, dayfirst=True), pd.to_datetime(end, dayfirst=True), category)
                       for start, end, category in date_ranges]
 
     # Initialize a column in 'data' to hold the classification result
     # Default classification can be 'normal operation' or any suitable default
-    data['classification'] = 'not classified'
+    data_copy['classification'] = 'not classified'
 
     # Determine the min and max timestamp in the data
-    min_timestamp, max_timestamp = data['timestamp'].min(), data['timestamp'].max()
+    min_timestamp, max_timestamp = data_copy['timestamp'].min(), data_copy['timestamp'].max()
 
     # Check each date range to ensure it's within the data's timestamp range
     for start, end, category in date_ranges_dt:
@@ -217,8 +232,9 @@ def classify_periods(data, date_ranges):
             print(f"Date range {start} to {end} ({category}) falls outside the data's timestamp range.")
         else:
             # Update the 'classification' column for ranges within the data's timestamp range
-            data.loc[((data['timestamp'] >= start) & (data['timestamp'] <= end)), 'classification'] = category
+            data_copy.loc[((data['timestamp'] >= start) & (data_copy['timestamp'] <= end)), 'classification'] = category
 
+    return data_copy
 
 def main():
     # Relative path or parameter for dataset
@@ -228,7 +244,7 @@ def main():
 
     # Preprocess the timestamp to a readable format if necessary
     data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
-    device_daily_hours = 8
+    device_daily_hours = None
     # Example of placeholders and configurations
     variables = ["temp"] # [ "coppia", "temp",]
     thresholds_device_based = [60] #[0.1, 40]
@@ -264,14 +280,12 @@ def main():
     print(generic_thresholds)
 
     data = filter_out_periods(data, date_ranges)
-    OEE = calculate_oee(data, OEE_estimation_method, variables, generic_thresholds, threshold_conditions_on, rolling_period,
+    OEE, data_copy = calculate_oee(data, OEE_estimation_method, variables, generic_thresholds, threshold_conditions_on, rolling_period,
                         model_path, device_daily_hours)
 
-    classify_periods(data, date_ranges)
+    data_copy = classify_periods(data_copy, date_ranges)
     print("OEE ", OEE, "%")
-
-    print(data)
-
+    print(data_copy)
 
 if __name__ == "__main__":
     main()
